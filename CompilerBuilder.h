@@ -22,6 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+
 #pragma once
 
 #include <stdio.h>
@@ -222,67 +223,67 @@ _192, _193, _194, _195, _196, _197, _198, _199, _200, _201, _202, _203, _204, _2
 #define CREATE_COMPILER_H_IMPL(name_, ...) CREATE_COMPILER_H_IMPL_IMPL(name_, __VA_ARGS__)
 #define CREATE_COMPILER_H_IMPL_IMPL(name_, ...) \
 FILE* name_##Out; \
-typedef struct Token \
+typedef struct name_##Token \
 { \
     int type; \
     char* value; \
     int line; \
     int column; \
     char* lineStr; \
-} Token; \
-typedef struct TokenBatch \
+} name_##Token; \
+typedef struct name_##TokenBatch \
 { \
-    Token* tokens; \
+    name_##Token* tokens; \
     int token_on; \
     int token_count; \
     int token_capacity; \
-} TokenBatch; \
-TokenBatch* name_##create_token_batch() \
+} name_##TokenBatch; \
+name_##TokenBatch* name_##create_token_batch() \
 { \
-    TokenBatch* batch = (TokenBatch*)malloc(sizeof(TokenBatch)); \
+    name_##TokenBatch* batch = (name_##TokenBatch*)malloc(sizeof(name_##TokenBatch)); \
     batch->token_count = 0; \
     batch->token_capacity = 256; \
     batch->token_on = 0; \
-    batch->tokens = (Token*)malloc(sizeof(Token) * batch->token_capacity); \
+    batch->tokens = (name_##Token*)malloc(sizeof(name_##Token) * batch->token_capacity); \
     return batch; \
 } \
-void name_##add_token(TokenBatch* batch, Token token) \
+void name_##add_token(name_##TokenBatch* batch, name_##Token token) \
 { \
     if (batch->token_count == batch->token_capacity) \
     { \
         batch->token_capacity += 256; \
-        batch->tokens = (Token*)realloc(batch->tokens, sizeof(Token) * batch->token_capacity); \
+        batch->tokens = (name_##Token*)realloc(batch->tokens, sizeof(name_##Token) * batch->token_capacity); \
     } \
     batch->tokens[batch->token_count] = token; \
     batch->token_count++; \
 } \
 MACRO_FOR_EACH(H_TOKENS__, __VA_ARGS__) MACRO_FOR_EACH(H_IGNORE_TOKENS__, __VA_ARGS__) \
-TokenBatch* name_##tokenize(const char* code) \
+name_##TokenBatch* name_##tokenize(const char* code) \
 { \
     size_t codeLength = strlen(code); \
     size_t offset = 0; \
-    TokenBatch* tokens = name_##create_token_batch(); \
+    name_##TokenBatch* tokens = name_##create_token_batch(); \
     int line = 1; \
     int column = 1; \
     while (offset < codeLength) \
     { \
         int matched = 0; \
-        for (int i = 0; i < token_count; i++) \
+        for (int i = 0; i < name_##token_count; i++) \
         { \
             regex_t regex; \
             regmatch_t match[1]; \
-            if (regcomp(&regex, token_patterns[i], REG_EXTENDED) == 0) \
+            if (regcomp(&regex, name_##token_patterns[i], REG_EXTENDED) == 0) \
             { \
                 if (regexec(&regex, code + offset, 1, match, 0) == 0) \
                 { \
-                    if (ignore_token(i)) \
+                    if (name_##ignore_token(i)) \
                     { \
                         offset += match[0].rm_eo; \
                         matched = 1; \
                         regfree(&regex); \
                         break; \
                     } \
-                    Token token; \
+                    name_##Token token; \
                     token.type = (name_##TokenType)i; \
                     token.column = column; \
                     token.line = line; \
@@ -332,7 +333,7 @@ void Compile##name_(const char* in, const char* out) \
     fread(source, 1, file_size, file); \
     source[file_size] = '\0'; \
     fclose(file); \
-    struct TokenBatch* tokens = name_##tokenize(source); \
+    struct name_##TokenBatch* tokens = name_##tokenize(source); \
     struct name_##Root* root = name_##CreateRoot(tokens); \
     name_##Out = fopen(out, "w"); \
     MACRO_FOR_EACH(H_ITERATION_STEP_CALL__, __VA_ARGS__) \
@@ -448,10 +449,10 @@ typedef enum \
 { \
     MACRO2_FOR_EACH(ENUM__, __VA_ARGS__) \
 } compilerName_##TokenType; \
-const char* token_patterns[] = { \
+const char* compilerName_##token_patterns[] = { \
     MACRO2_FOR_EACH(STR__, __VA_ARGS__) \
 }; \
-int token_count = GET_ARG_COUNT(__VA_ARGS__); \
+int compilerName_##token_count = GET_ARG_COUNT(__VA_ARGS__); \
 MACRO2_FOR_EACH(TOKEN_RULE__, __VA_ARGS__)
 #define H_IGNORE_TOKENS__TOKENS_IMPL(placeholder_, ...)
 #define H_ITERATION_STEP__TOKENS_IMPL(placeholder_, ...)
@@ -468,8 +469,10 @@ MACRO2_FOR_EACH(TOKEN_RULE__, __VA_ARGS__)
 
 #define ignoreTokens(...) ,IGNORE_TOKENS_IMPL(__VA_ARGS__)
 #define H_TOKENS__IGNORE_TOKENS_IMPL(...)
-#define H_IGNORE_TOKENS__IGNORE_TOKENS_IMPL(...) \
-int ignore_token(int i) \
+#define H_IGNORE_TOKENS__IGNORE_TOKENS_IMPL(...) H_IGNORE_TOKENS__IGNORE_TOKENS_IMPL_IMPL(COMPILER, __VA_ARGS__)
+#define H_IGNORE_TOKENS__IGNORE_TOKENS_IMPL_IMPL(compilerName_, ...) H_IGNORE_TOKENS__IGNORE_TOKENS_IMPL_IMPL_IMPL(compilerName_, __VA_ARGS__)
+#define H_IGNORE_TOKENS__IGNORE_TOKENS_IMPL_IMPL_IMPL(compilerName_, ...) \
+int compilerName_##ignore_token(int i) \
 { \
     if (0 \
         RUN_MACRO_FOR_EACH(TOKEN_OR, __VA_ARGS__) \
@@ -521,9 +524,9 @@ typedef struct compilerName_##name_ \
     MACRO2_FOR_EACH(UNION__, __VA_ARGS__) \
     MACRO2_FOR_EACH(UNION_END__, __VA_ARGS__) \
 } compilerName_##name_; \
-struct compilerName_##name_* compilerName_##Create##name_(struct TokenBatch* batch);
+struct compilerName_##name_* compilerName_##Create##name_(struct compilerName_##TokenBatch* batch);
 #define H_NODE_CREATE__NODE_IMPL(compilerName_, name_, ...) \
-struct compilerName_##name_ * compilerName_##Create##name_(struct TokenBatch* batch) \
+struct compilerName_##name_ * compilerName_##Create##name_(struct compilerName_##TokenBatch* batch) \
 { \
     int current_token = batch->token_on; \
     int end_token = 0; \
@@ -557,14 +560,14 @@ typedef struct compilerName_##name_ \
     MACRO2_FOR_EACH(UNION_END__, __VA_ARGS__) \
     struct compilerName_##name_ * next; \
 } compilerName_##name_; \
-struct compilerName_##name_* compilerName_##Create##name_(struct TokenBatch* batch);
+struct compilerName_##name_* compilerName_##Create##name_(struct compilerName_##TokenBatch* batch);
 #define H_NODE_CREATE__NODE_NEXT_IMPL(compilerName_, name_, ...) \
-struct compilerName_##name_ * compilerName_##Create##name_(struct TokenBatch* batch) \
+struct compilerName_##name_ * compilerName_##Create##name_(struct compilerName_##TokenBatch* batch) \
 { \
     int current_token = batch->token_on; \
     int end_token = 0; \
     struct compilerName_##name_ * var_0 = (void*)0; \
-    struct compilerName_##name_ * (*func)(struct TokenBatch*) = compilerName_##Create##name_; \
+    struct compilerName_##name_ * (*func)(struct compilerName_##TokenBatch*) = compilerName_##Create##name_; \
     MACRO2_FOR_EACH(CREATE__, __VA_ARGS__) \
     MACRO2_FOR_EACH(CREATE_MALLOC__, __VA_ARGS__) \
     MACRO2_FOR_EACH(NEXT_CREATE_CHECK_ALL__, __VA_ARGS__) \
@@ -580,19 +583,22 @@ struct compilerName_##name_ * compilerName_##Create##name_(struct TokenBatch* ba
 #define TOKEN_H_ITERATION_MACRO__NODE_NEXT_IMPL(compilerName_, name_, ...) TOKEN_H_DECLARE_ITERATION
 
 #define token(name_, str_) ,TOKEN_IMPL(name_, str_)
-#define ENUM__TOKEN_IMPL(name_, str_) TOKEN_##name_,
+#define ENUM__TOKEN_IMPL(name_, str_) ENUM__TOKEN_IMPL_IMPL(COMPILER, name_, str_)
+#define ENUM__TOKEN_IMPL_IMPL(compilerName_, name_, str_) ENUM__TOKEN_IMPL_IMPL_IMPL(compilerName_, name_, str_)
+#define ENUM__TOKEN_IMPL_IMPL_IMPL(compilerName_, name_, str_) compilerName_##TOKEN_##name_,
+
 #define STR__TOKEN_IMPL(name_, str_) str_,
 #define TOKEN_RULE__TOKEN_IMPL(name_, str_) TOKEN_RULE__TOKEN_IMPL_IMPL(COMPILER, name_, str_)
 #define TOKEN_RULE__TOKEN_IMPL_IMPL(compilerName_, name_, str_) TOKEN_RULE__TOKEN_IMPL_IMPL_IMPL(compilerName_, name_, str_)
 #define TOKEN_RULE__TOKEN_IMPL_IMPL_IMPL(compilerName_, name_, str_) \
 typedef struct compilerName_##name_ \
 { \
-    struct Token* token; \
+    struct compilerName_##Token* token; \
 } compilerName_##name_; \
-struct compilerName_##name_ * compilerName_##Create##name_(struct TokenBatch* batch) \
+struct compilerName_##name_ * compilerName_##Create##name_(struct compilerName_##TokenBatch* batch) \
 { \
-    struct Token* token = &batch->tokens[batch->token_on]; \
-    if (token->type == TOKEN_##name_) \
+    struct compilerName_##Token* token = &batch->tokens[batch->token_on]; \
+    if (token->type == compilerName_##TOKEN_##name_) \
     { \
         compilerName_##name_ * var_0 = malloc(sizeof(struct compilerName_##name_)); \
         var_0->token = token; \
@@ -605,7 +611,9 @@ struct compilerName_##name_ * compilerName_##Create##name_(struct TokenBatch* ba
 
 
 
-#define TOKEN_OR(v_) || i == TOKEN_##v_
+#define TOKEN_OR(v_) TOKEN_OR_IMPL(COMPILER, v_)
+#define TOKEN_OR_IMPL(compilerName_, v_) TOKEN_OR_IMPL_IMPL(compilerName_, v_)
+#define TOKEN_OR_IMPL_IMPL(compilerName_, v_) || i == compilerName_##TOKEN_##v_
 
 
 
