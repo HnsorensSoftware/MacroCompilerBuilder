@@ -375,7 +375,6 @@ void Compile##name_(const char* in, const char* out) \
     name_##FreeAll(); \
     free(name_##garbage->ptrs); \
     free(name_##garbage); \
-    fclose(file); \
     fclose(name_##Out); \
 }
 
