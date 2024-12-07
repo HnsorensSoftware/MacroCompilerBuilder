@@ -204,7 +204,6 @@ _192, _193, _194, _195, _196, _197, _198, _199, _200, _201, _202, _203, _204, _2
 #pragma endregion
 
 #define createCompilerH(contents_) CREATE_COMPILER_H_IMPL(COMPILER contents_)
-#define createCompilerC(contents_) CREATE_COMPILER_C(contents_)
 #define iteration(name_) IT_IMPL(COMPILER, name_, NODE)
 #define IT_IMPL(compilerName_, name_, node_) IT_IMPL_IMPL(compilerName_, name_, node_)
 #define IT_IMPL_IMPL(compilerName_, name_, node_) void compilerName_##name_##node_(FILE* file, struct compilerName_##node_ * var_0, void (*continue_function)(FILE*, void*))
@@ -223,6 +222,38 @@ _192, _193, _194, _195, _196, _197, _198, _199, _200, _201, _202, _203, _204, _2
 #define CREATE_COMPILER_H_IMPL(name_, ...) CREATE_COMPILER_H_IMPL_IMPL(name_, __VA_ARGS__)
 #define CREATE_COMPILER_H_IMPL_IMPL(name_, ...) \
 FILE* name_##Out; \
+typedef struct name_##GarbageCollector \
+{ \
+    void** ptrs; \
+    int capacity; \
+    int count; \
+} name_##GarbageCollector; \
+struct name_##GarbageCollector* name_##garbage; \
+struct name_##GarbageCollector* name_##CreateGarbageCollector() \
+{ \
+    struct name_##GarbageCollector* collector = malloc(sizeof( name_##GarbageCollector)); \
+    collector->count = 0; \
+    collector->capacity = 256; \
+    collector->ptrs = malloc(sizeof(void*) * collector->capacity); \
+    return collector; \
+} \
+void* name_##AddToCollector(void* ptr) \
+{ \
+    name_##garbage->ptrs[name_##garbage->count++] = ptr; \
+    if (name_##garbage->count == name_##garbage->capacity) \
+    { \
+        name_##garbage->capacity += 256; \
+        name_##garbage->ptrs = realloc(name_##garbage->ptrs, sizeof(void*) * name_##garbage->capacity); \
+    } \
+    return ptr; \
+} \
+void name_##FreeAll() \
+{ \
+    for (int i = 0; i < name_##garbage->count; i++) \
+    { \
+        free(name_##garbage->ptrs[i]); \
+    } \
+} \
 typedef struct name_##Token \
 { \
     int type; \
@@ -240,11 +271,11 @@ typedef struct name_##TokenBatch \
 } name_##TokenBatch; \
 name_##TokenBatch* name_##create_token_batch() \
 { \
-    name_##TokenBatch* batch = (name_##TokenBatch*)malloc(sizeof(name_##TokenBatch)); \
+    name_##TokenBatch* batch = name_##AddToCollector(malloc(sizeof(name_##TokenBatch))); \
     batch->token_count = 0; \
     batch->token_capacity = 256; \
     batch->token_on = 0; \
-    batch->tokens = (name_##Token*)malloc(sizeof(name_##Token) * batch->token_capacity); \
+    batch->tokens = malloc(sizeof(name_##Token) * batch->token_capacity); \
     return batch; \
 } \
 void name_##add_token(name_##TokenBatch* batch, name_##Token token) \
@@ -252,7 +283,7 @@ void name_##add_token(name_##TokenBatch* batch, name_##Token token) \
     if (batch->token_count == batch->token_capacity) \
     { \
         batch->token_capacity += 256; \
-        batch->tokens = (name_##Token*)realloc(batch->tokens, sizeof(name_##Token) * batch->token_capacity); \
+        batch->tokens = realloc(batch->tokens, sizeof(name_##Token) * batch->token_capacity); \
     } \
     batch->tokens[batch->token_count] = token; \
     batch->token_count++; \
@@ -288,6 +319,7 @@ name_##TokenBatch* name_##tokenize(const char* code) \
                     token.column = column; \
                     token.line = line; \
                     token.value = strndup(code + offset, match[0].rm_eo); \
+                    name_##AddToCollector(token.value); \
                     name_##add_token(tokens, token); \
                     for (int j = 0; j < strlen(token.value); j++) \
                     { \
@@ -317,14 +349,15 @@ name_##TokenBatch* name_##tokenize(const char* code) \
     } \
     return tokens; \
 } \
-MACRO_FOR_EACH(H_NODE__, __VA_ARGS__) MACRO_NODE_FOR_EACH(TOKEN_H_ITERATION_MACRO__ ,H_EXPAND_TOKENS__ , XPAND(__VA_ARGS__), __VA_ARGS__) MACRO_NODE_FOR_EACH(H_ITERATION_MACRO__ ,H_EXPAND__ , XPAND(__VA_ARGS__), __VA_ARGS__) MACRO_NODE_FOR_EACH(CONTINUE_H_ITERATION_MACRO__ ,H_EXPAND__ , XPAND(__VA_ARGS__), __VA_ARGS__) MACRO_FOR_EACH(H_NODE_CREATE__, __VA_ARGS__) MACRO_FOR_EACH(H_ITERATION_STEP__, __VA_ARGS__)\
+MACRO_FOR_EACH(H_NODE__, __VA_ARGS__) MACRO_NODE_FOR_EACH(TOKEN_H_ITERATION_MACRO__ ,H_EXPAND_TOKENS__ , XPAND(__VA_ARGS__), __VA_ARGS__) MACRO_NODE_FOR_EACH(H_ITERATION_MACRO__ ,H_EXPAND__ , XPAND(__VA_ARGS__), __VA_ARGS__)  MACRO_NODE_FOR_EACH(CONTINUE_H_ITERATION_MACRO__ ,H_EXPAND__ , XPAND(__VA_ARGS__), __VA_ARGS__) MACRO_FOR_EACH(H_NODE_CREATE__, __VA_ARGS__) MACRO_FOR_EACH(H_ITERATION_STEP__, __VA_ARGS__)  \
 void Compile##name_(const char* in, const char* out) \
 { \
+    name_##garbage = name_##CreateGarbageCollector(); \
     FILE* file = fopen(in, "rb"); \
     fseek(file, 0, SEEK_END); \
     long file_size = ftell(file); \
     fseek(file, 0, SEEK_SET); \
-    char* source = (char*)malloc(file_size+1); \
+    char* source = name_##AddToCollector(malloc(file_size+1)); \
     if (!source) \
     { \
         printf("Memory allocation failed!"); \
@@ -337,9 +370,14 @@ void Compile##name_(const char* in, const char* out) \
     struct name_##Root* root = name_##CreateRoot(tokens); \
     name_##Out = fopen(out, "w"); \
     MACRO_FOR_EACH(H_ITERATION_STEP_CALL__, __VA_ARGS__) \
+    printf("%i\n", name_##garbage->count); \
+    free(tokens->tokens); \
+    name_##FreeAll(); \
+    free(name_##garbage->ptrs); \
+    free(name_##garbage); \
+    fclose(file); \
+    fclose(name_##Out); \
 }
-
-#define CREATE_COMPILER_C_IMPL(name_, ...)
 
 #define continue_it() continue_function(file, var_0)
 
@@ -347,7 +385,7 @@ void Compile##name_(const char* in, const char* out) \
 
 #define NOTHING(...)
 #define H_DECLARE_ITERATION(n_, contents_)  H_DECLARE_ITERATION_IMPL(n_, contents_)
-#define H_DECLARE_ITERATION_IMPL(n_, name_, ...) H_DECLARE_ITERATION_IMPL_IMPL(RULE(__VA_ARGS__), name_ MACRO2_FOR_EACH(H_GET_ITERATION_NAME__, E##n_) )
+#define H_DECLARE_ITERATION_IMPL(n_, name_, ...) H_DECLARE_ITERATION_IMPL_IMPL(RULE(__VA_ARGS__), name_ MACRO2_FOR_EACH(H_GET_ITERATION_NAME__, E##n_))
 #define H_DECLARE_ITERATION_IMPL_IMPL(n_, contents_) DECLARE_ITERATION_FUNCTIONS(n_, contents_)
 #define DECLARE_ITERATION_FUNCTIONS(n_, name_, ...) RUN_X_X_MACRO_FOR_EACH(DECLARE_ITERATION_FUNCTION, GET_##n_, name_, __VA_ARGS__)
 #define DECLARE_ITERATION_FUNCTION(rule_, name_, iteration_step_) DECLARE_ITERATION_FUNCTION_IMPL( COMPILER , rule_, name_, iteration_step_)
@@ -388,7 +426,7 @@ void compilerName_##iteration_step_##name_##ContinueVoid(FILE* file, void* var_0
 }
 
 #define NEXT_CONTINUE_H_DECLARE_ITERATION(n_, contents_)  NEXT_CONTINUE_H_DECLARE_ITERATION_IMPL(n_, contents_)
-#define NEXT_CONTINUE_H_DECLARE_ITERATION_IMPL(n_, name_, ...) NEXT_CONTINUE_H_DECLARE_ITERATION_IMPL_IMPL(RULE(__VA_ARGS__), name_ MACRO2_FOR_EACH(H_GET_ITERATION_NAME__, E##n_) )
+#define NEXT_CONTINUE_H_DECLARE_ITERATION_IMPL(n_, name_, ...) NEXT_CONTINUE_H_DECLARE_ITERATION_IMPL_IMPL(RULE(__VA_ARGS__), name_ MACRO2_FOR_EACH(H_GET_ITERATION_NAME__, E##n_)  )
 #define NEXT_CONTINUE_H_DECLARE_ITERATION_IMPL_IMPL(n_, contents_) NEXT_CONTINUE_DECLARE_ITERATION_FUNCTIONS(n_, contents_)
 #define NEXT_CONTINUE_DECLARE_ITERATION_FUNCTIONS(n_, name_, ...) RUN_X_X_MACRO_FOR_EACH(NEXT_CONTINUE_DECLARE_ITERATION_FUNCTION, GET_##n_, name_, __VA_ARGS__)
 #define NEXT_CONTINUE_DECLARE_ITERATION_FUNCTION(rule_, name_, iteration_step_) NEXT_CONTINUE_DECLARE_ITERATION_FUNCTION_IMPL( COMPILER , rule_, name_, iteration_step_)
@@ -536,6 +574,7 @@ struct compilerName_##name_ * compilerName_##Create##name_(struct compilerName_#
     MACRO2_FOR_EACH(CREATE_CHECK_ALL__, __VA_ARGS__) \
     MACRO2_FOR_EACH(CREATE_END__, __VA_ARGS__) \
 }
+
 #define H_EXPAND__NODE_IMPL(compilerName_, name_, ...) name_, __VA_ARGS__
 #define H_EXPAND_TOKENS__NODE_IMPL(compilerName_, name_, ...)
 #define H_GET_ITERATION_NAME__NODE_IMPL(compilerName_, name_, ...)
@@ -600,14 +639,13 @@ struct compilerName_##name_ * compilerName_##Create##name_(struct compilerName_#
     struct compilerName_##Token* token = &batch->tokens[batch->token_on]; \
     if (token->type == compilerName_##TOKEN_##name_) \
     { \
-        compilerName_##name_ * var_0 = malloc(sizeof(struct compilerName_##name_)); \
+        compilerName_##name_ * var_0 = compilerName_##AddToCollector(malloc(sizeof(struct compilerName_##name_))); \
         var_0->token = token; \
         batch->token_on++; \
         return var_0; \
     } \
     return (void*)0; \
 }
-
 
 
 
@@ -623,7 +661,11 @@ struct compilerName_##name_ * compilerName_##Create##name_(struct compilerName_#
 #define UNION_START__ALL_RULE_IMPL(...)
 #define UNION_END__ALL_RULE_IMPL(...)
 #define INDEX_VAR__ALL_RULE_IMPL(...)
-#define CREATE_MALLOC__ALL_RULE_IMPL(...) var_0 = malloc(sizeof(*var_0));
+#define CREATE_MALLOC__ALL_RULE_IMPL(...) CREATE_MALLOC__ALL_RULE_IMPL_IMPL(COMPILER, ...)
+#define CREATE_MALLOC__ALL_RULE_IMPL_IMPL(compilerName_, ...) CREATE_MALLOC__ALL_RULE_IMPL_IMPL_IMPL(compilerName_, __VA_ARGS__)
+#define CREATE_MALLOC__ALL_RULE_IMPL_IMPL_IMPL(compilerName_, ...) var_0 = compilerName_##AddToCollector(malloc(sizeof(*var_0)));
+
+
 #define CREATE_END__ALL_RULE_IMPL(...) return var_0;
 #define NEXT_CREATE_END__ALL_RULE_IMPL(...) var_0->next = func(batch); return var_0;
 #define CREATE__ALL_RULE_IMPL(...) INDEXED_RUN_MACRO_FOR_EACH(ALL_CREATE_CHECK_NODE, __VA_ARGS__)
@@ -659,7 +701,7 @@ batch->token_on = current_token; \
 struct compilerName_##name_ * var_##n_ = compilerName_##Create##name_(batch); \
 if (var_##n_ && !var_0) \
 { \
-    var_0 = malloc(sizeof(*var_0)); \
+    var_0 = compilerName_##AddToCollector(malloc(sizeof(*var_0))); \
     var_0->var_index = n_; \
     var_0->var.var_##n_ = var_##n_; \
     end_token = batch->token_on; \
@@ -672,7 +714,7 @@ batch->token_on = current_token; \
 struct compilerName_##name_ * var_##n_ = compilerName_##Create##name_(batch); \
 if (var_##n_ && !var_0) \
 { \
-    var_0 = malloc(sizeof(*var_0)); \
+    var_0 = compilerName_##AddToCollector(malloc(sizeof(*var_0))); \
     var_0->var_index = n_; \
     var_0->var.var_##n_ = var_##n_; \
     var_0->next = func(batch); \
