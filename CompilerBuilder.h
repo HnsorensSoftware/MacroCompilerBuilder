@@ -203,8 +203,8 @@ _192, _193, _194, _195, _196, _197, _198, _199, _200, _201, _202, _203, _204, _2
 #define inc_127 128
 #pragma endregion
 
-#define createCompilerH(contents_) CREATE_COMPILER_H_IMPL(COMPILER contents_)
-#define iteration(name_) IT_IMPL(COMPILER, name_, NODE)
+#define createCompiler(contents_) CREATE_COMPILER_H_IMPL(COMPILER contents_)
+#define recurse(name_) IT_IMPL(COMPILER, name_, NODE)
 #define IT_IMPL(compilerName_, name_, node_) IT_IMPL_IMPL(compilerName_, name_, node_)
 #define IT_IMPL_IMPL(compilerName_, name_, node_) void compilerName_##name_##node_(FILE* file, struct compilerName_##node_ * var_0, void (*continue_function)(FILE*, void*))
 
@@ -222,6 +222,47 @@ _192, _193, _194, _195, _196, _197, _198, _199, _200, _201, _202, _203, _204, _2
 #define CREATE_COMPILER_H_IMPL(name_, ...) CREATE_COMPILER_H_IMPL_IMPL(name_, __VA_ARGS__)
 #define CREATE_COMPILER_H_IMPL_IMPL(name_, ...) \
 FILE* name_##Out; \
+char** name_##Contents; \
+const char** readFileLines(FILE *file) { \
+    size_t allocatedSize = 256; \
+    const char **lines = (const char **)malloc(sizeof(char*) * allocatedSize); \
+    if (lines == NULL) { \
+        perror("Failed to allocate memory for lines"); \
+        return NULL; \
+    } \
+    size_t lineCount = 0; \
+    char line[1024]; \
+    while (fgets(line, sizeof(line), file)) { \
+        size_t len = strlen(line); \
+        if (line[len - 1] == '\n') { \
+            line[len - 1] = '\0'; \
+        } \
+        if (lineCount >= allocatedSize) { \
+            allocatedSize *= 2; \
+            const char **newLines = (const char **)realloc(lines, sizeof(char*) * allocatedSize); \
+            if (newLines == NULL) { \
+                perror("Failed to reallocate memory for lines"); \
+                for (size_t i = 0; i < lineCount; i++) { \
+                    free((void*)lines[i]); \
+                } \
+                free((void*)lines); \
+                return NULL; \
+            } \
+            lines = newLines; \
+        } \
+        lines[lineCount] = strdup(line); \
+        if (lines[lineCount] == NULL) { \
+            perror("Failed to duplicate line"); \
+            for (size_t i = 0; i < lineCount; i++) { \
+                free((void*)lines[i]); \
+            } \
+            free((void*)lines); \
+            return NULL; \
+        } \
+        lineCount++; \
+    } \
+    return lines; \
+} \
 typedef struct name_##GarbageCollector \
 { \
     void** ptrs; \
@@ -309,6 +350,19 @@ name_##TokenBatch* name_##tokenize(const char* code) \
                 { \
                     if (name_##ignore_token(i)) \
                     { \
+                        char* contents = strndup(code + offset, match[0].rm_eo); \
+                        for (int j = 0; j < strlen(contents); j++) \
+                        { \
+                            if (contents[j] == '\n') \
+                            { \
+                                column = 1; \
+                                line++; \
+                            } \
+                            else \
+                            { \
+                                column++; \
+                            } \
+                        } \
                         offset += match[0].rm_eo; \
                         matched = 1; \
                         regfree(&regex); \
@@ -354,6 +408,7 @@ void Compile##name_(const char* in, const char* out) \
 { \
     name_##garbage = name_##CreateGarbageCollector(); \
     FILE* file = fopen(in, "rb"); \
+    name_##Contents = readFileLines(file); \
     fseek(file, 0, SEEK_END); \
     long file_size = ftell(file); \
     fseek(file, 0, SEEK_SET); \
@@ -368,9 +423,24 @@ void Compile##name_(const char* in, const char* out) \
     fclose(file); \
     struct name_##TokenBatch* tokens = name_##tokenize(source); \
     struct name_##Root* root = name_##CreateRoot(tokens); \
+    if (tokens->token_on != tokens->token_count) \
+    { \
+        printf("Syntax Error!\n"); \
+        int line_from = 0; \
+        int current_line = tokens->tokens[tokens->token_on].line; \
+        if (current_line - 4 > 0) \
+        { \
+            line_from = current_line - 4; \
+        } \
+        for (int i = line_from; i < current_line; i++) \
+        { \
+            printf("\nLine %i: %s", i, name_##Contents[i]); \
+        } \
+        printf(" <--- Junk Line\n"); \
+        exit(1); \
+    } \
     name_##Out = fopen(out, "w"); \
     MACRO_FOR_EACH(H_ITERATION_STEP_CALL__, __VA_ARGS__) \
-    printf("%i\n", name_##garbage->count); \
     free(tokens->tokens); \
     name_##FreeAll(); \
     free(name_##garbage->ptrs); \
@@ -566,7 +636,7 @@ struct compilerName_##name_* compilerName_##Create##name_(struct compilerName_##
 struct compilerName_##name_ * compilerName_##Create##name_(struct compilerName_##TokenBatch* batch) \
 { \
     int current_token = batch->token_on; \
-    int end_token = 0; \
+    int end_token = current_token; \
     struct compilerName_##name_ * var_0 = (void*)0; \
     MACRO2_FOR_EACH(CREATE__, __VA_ARGS__) \
     MACRO2_FOR_EACH(CREATE_MALLOC__, __VA_ARGS__) \
@@ -603,7 +673,7 @@ struct compilerName_##name_* compilerName_##Create##name_(struct compilerName_##
 struct compilerName_##name_ * compilerName_##Create##name_(struct compilerName_##TokenBatch* batch) \
 { \
     int current_token = batch->token_on; \
-    int end_token = 0; \
+    int end_token = current_token; \
     struct compilerName_##name_ * var_0 = (void*)0; \
     struct compilerName_##name_ * (*func)(struct compilerName_##TokenBatch*) = compilerName_##Create##name_; \
     MACRO2_FOR_EACH(CREATE__, __VA_ARGS__) \
@@ -620,6 +690,7 @@ struct compilerName_##name_ * compilerName_##Create##name_(struct compilerName_#
 #define CONTINUE_H_ITERATION_MACRO__NODE_NEXT_IMPL(compilerName_, name_, ...) NEXT_CONTINUE_H_DECLARE_ITERATION
 #define TOKEN_H_ITERATION_MACRO__NODE_NEXT_IMPL(compilerName_, name_, ...) TOKEN_H_DECLARE_ITERATION
 
+#define dep_token(name_, str_) ,TOKEN_IMPL(name_, "^$a")
 #define token(name_, str_) ,TOKEN_IMPL(name_, str_)
 #define ENUM__TOKEN_IMPL(name_, str_) ENUM__TOKEN_IMPL_IMPL(COMPILER, name_, str_)
 #define ENUM__TOKEN_IMPL_IMPL(compilerName_, name_, str_) ENUM__TOKEN_IMPL_IMPL_IMPL(compilerName_, name_, str_)
@@ -654,7 +725,7 @@ struct compilerName_##name_ * compilerName_##Create##name_(struct compilerName_#
 
 
 
-#define all_rule(...) ,ALL_RULE_IMPL(__VA_ARGS__)
+#define allRule(...) ,ALL_RULE_IMPL(__VA_ARGS__)
 #define UNION__ALL_RULE_IMPL(...) INDEXED_RUN_MACRO_FOR_EACH(UNION_RULE, __VA_ARGS__)
 #define VAR_DECLARE__ALL_RULE_IMPL(...)
 #define UNION_START__ALL_RULE_IMPL(...)
@@ -679,7 +750,7 @@ struct compilerName_##name_ * compilerName_##Create##name_(struct compilerName_#
 #define ALL_SET_NODE(name_, n_) var_0->var_##n_ = var_##n_;
 
 
-#define any_rule(...) ,ANY_RULE_IMPL(__VA_ARGS__)
+#define anyRule(...) ,ANY_RULE_IMPL(__VA_ARGS__)
 #define UNION__ANY_RULE_IMPL(...) INDEXED_RUN_MACRO_FOR_EACH(UNION_RULE, __VA_ARGS__)
 #define VAR_DECLARE__ANY_RULE_IMPL(...)
 #define UNION_START__ANY_RULE_IMPL(...) union {
@@ -687,7 +758,7 @@ struct compilerName_##name_ * compilerName_##Create##name_(struct compilerName_#
 #define INDEX_VAR__ANY_RULE_IMPL(...) int var_index;
 #define CREATE_MALLOC__ANY_RULE_IMPL(...)
 #define CREATE_END__ANY_RULE_IMPL(...) batch->token_on = end_token; return var_0;
-#define NEXT_CREATE_END__ANY_RULE_IMPL(...) batch->token_on = end_token; return var_0;
+#define NEXT_CREATE_END__ANY_RULE_IMPL(...) batch->token_on = end_token;  return var_0;
 #define CREATE__ANY_RULE_IMPL(...)
 #define CREATE_CHECK_ALL__ANY_RULE_IMPL(...) INDEXED_RUN_MACRO_FOR_EACH(ANY_SET_NODE, __VA_ARGS__)
 #define NEXT_CREATE_CHECK_ALL__ANY_RULE_IMPL(...) INDEXED_RUN_MACRO_FOR_EACH(NEXT_ANY_SET_NODE, __VA_ARGS__)
